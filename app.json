@@ -53,6 +53,7 @@
       "expo-asset",
       "expo-system-ui"
     ],
+    "newArchEnabled": false,
     "experiments": {
       "typedRoutes": true
     },

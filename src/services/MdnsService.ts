@@ -66,51 +66,64 @@ class MdnsService {
 
   /**
    * mDNS 스캔 시작 (컨트롤러 모드에서 호출)
+   * 실패해도 예외를 던지지 않고 false 반환 → 수동 IP 입력으로 폴백
    * @param onFound 기기 발견 시 콜백
    * @param onRemoved 기기 제거 시 콜백
+   * @returns 스캔 시작 성공 여부
    */
   startScan(
     onFound: (device: DiscoveredDevice) => void,
     onRemoved: (name: string) => void
-  ): void {
-    if (this.isScanning) {
-      this.stopScan()
-    }
-
-    const zc = this.getZeroconf()
-
-    // 이전 리스너 제거
-    zc.removeAllListeners()
-
-    zc.on('resolved', (service: ZeroconfService) => {
-      // service: { name, host, port, addresses: string[], txt }
-      const address = service.addresses?.[0] ?? service.host
-      const device: DiscoveredDevice = {
-        name: service.name,
-        host: service.host,
-        address,
-        port: service.port,
-      }
-      console.log('mDNS: found device', device.name, device.address)
-      onFound(device)
-    })
-
-    zc.on('remove', (name: string) => {
-      console.log('mDNS: removed device', name)
-      onRemoved(name)
-    })
-
-    zc.on('error', (err: unknown) => {
-      console.error('mDNS scan error:', err)
-    })
-
+  ): boolean {
     try {
+      if (this.isScanning) {
+        this.stopScan()
+      }
+
+      const zc = this.getZeroconf()
+
+      // 이전 리스너 제거
+      zc.removeAllListeners()
+
+      zc.on('resolved', (service: ZeroconfService) => {
+        try {
+          const address = service.addresses?.[0] ?? service.host
+          const device: DiscoveredDevice = {
+            name: service.name,
+            host: service.host,
+            address,
+            port: service.port,
+          }
+          console.log('mDNS: found device', device.name, device.address)
+          onFound(device)
+        } catch (e) {
+          console.error('mDNS: error in resolved handler', e)
+        }
+      })
+
+      zc.on('remove', (name: string) => {
+        try {
+          console.log('mDNS: removed device', name)
+          onRemoved(name)
+        } catch (e) {
+          console.error('mDNS: error in remove handler', e)
+        }
+      })
+
+      zc.on('error', (err: unknown) => {
+        console.error('mDNS scan error:', err)
+      })
+
       // DNSSD 모드로 스캔 (NSD보다 Android 호환성 좋음)
       zc.scan(SERVICE_TYPE, SERVICE_PROTOCOL, SERVICE_DOMAIN)
       this.isScanning = true
       console.log('mDNS: scan started')
+      return true
     } catch (e) {
-      console.error('mDNS scan start error:', e)
+      console.error('mDNS: startScan failed (native module error?):', e)
+      this.isScanning = false
+      this.zeroconf = null // 인스턴스 초기화해서 다음 시도 가능하게
+      return false
     }
   }
 
@@ -125,13 +138,18 @@ class MdnsService {
       console.log('mDNS: scan stopped')
     } catch (e) {
       console.error('mDNS stop error:', e)
+      this.isScanning = false
     }
   }
 
   /** 완전 정리 */
   destroy(): void {
-    this.unpublishService()
-    this.stopScan()
+    try {
+      this.unpublishService()
+      this.stopScan()
+    } catch (e) {
+      console.error('mDNS destroy error:', e)
+    }
     this.zeroconf = null
   }
 }

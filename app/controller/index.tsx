@@ -23,6 +23,7 @@ import { CONTROL_PORT } from '../../src/services/TcpServerService'
 export default function ControllerDiscoveryScreen() {
   const [manualIp, setManualIp] = useState('')
   const [isConnecting, setIsConnecting] = useState(false)
+  const [mdnsUnavailable, setMdnsUnavailable] = useState(false)
 
   const discoveredDevices = useControllerStore((s) => s.discoveredDevices)
   const isScanning = useControllerStore((s) => s.isScanning)
@@ -53,18 +54,36 @@ export default function ControllerDiscoveryScreen() {
   const startScanning = () => {
     clearDiscoveredDevices()
     setIsScanning(true)
+    setMdnsUnavailable(false)
 
-    mdnsService.startScan(
-      (device) => addDiscoveredDevice(device),
-      (name) => removeDiscoveredDevice(name)
-    )
+    try {
+      const success = mdnsService.startScan(
+        (device) => addDiscoveredDevice(device),
+        (name) => removeDiscoveredDevice(name)
+      )
 
-    // 30초 후 스캔 자동 중지
-    setTimeout(() => setIsScanning(false), 30000)
+      if (!success) {
+        // mDNS를 사용할 수 없음 — 수동 IP 입력으로 폴백
+        setIsScanning(false)
+        setMdnsUnavailable(true)
+        return
+      }
+
+      // 30초 후 스캔 자동 중지
+      setTimeout(() => setIsScanning(false), 30000)
+    } catch (e) {
+      console.error('startScanning failed:', e)
+      setIsScanning(false)
+      setMdnsUnavailable(true)
+    }
   }
 
   const handleRefresh = () => {
-    mdnsService.stopScan()
+    try {
+      mdnsService.stopScan()
+    } catch (e) {
+      console.error('stopScan failed:', e)
+    }
     startScanning()
   }
 
@@ -157,6 +176,18 @@ export default function ControllerDiscoveryScreen() {
             <Text className="text-white text-sm">🔄 다시 탐색</Text>
           </TouchableOpacity>
         </View>
+
+        {/* mDNS 사용 불가 안내 */}
+        {mdnsUnavailable && (
+          <View className="bg-yellow-900 border border-yellow-700 rounded-xl px-4 py-3 mb-3">
+            <Text className="text-yellow-200 text-sm font-medium">
+              ⚠️ 자동 탐색을 사용할 수 없습니다
+            </Text>
+            <Text className="text-yellow-400 text-xs mt-1">
+              아래 IP 주소 입력으로 직접 연결하세요
+            </Text>
+          </View>
+        )}
 
         {/* 발견된 기기 목록 */}
         {discoveredDevices.length === 0 ? (
