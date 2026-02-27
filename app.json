@@ -6,6 +6,12 @@
     "scheme": "remotesoundplayer",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#111827"
+    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -44,7 +50,8 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-system-ui"
     ],
     "experiments": {
       "typedRoutes": true
