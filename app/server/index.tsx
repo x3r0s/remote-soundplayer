@@ -14,13 +14,13 @@ import * as Network from 'expo-network'
 import * as Device from 'expo-device'
 import * as KeepAwake from 'expo-keep-awake'
 import * as DocumentPicker from 'expo-document-picker'
-import * as FileSystem from 'expo-file-system'
 import { generateId } from '../../src/utils/uuid'
 import {
   deleteAudioFile,
   ensureAudioDir,
   fileExists,
   getAudioFilePath,
+  copyToAudioDir,
 } from '../../src/utils/fileStorage'
 import { audioService } from '../../src/services/AudioService'
 import { mdnsService } from '../../src/services/MdnsService'
@@ -81,7 +81,7 @@ export default function ServerScreen() {
       if (store.lastPlayedFileId) {
         const file = store.files.find((f) => f.id === store.lastPlayedFileId)
         if (file) {
-          const exists = await fileExists(file.id)
+          const exists = fileExists(getAudioFilePath(file.id, file.name))
           if (!exists) {
             removeFile(file.id)
           }
@@ -107,7 +107,7 @@ export default function ServerScreen() {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
-        copyToCacheDirectory: false,
+        copyToCacheDirectory: true,
       })
 
       if (result.canceled || !result.assets?.[0]) return
@@ -119,9 +119,10 @@ export default function ServerScreen() {
       const fileName = asset.name
       const fileSize = asset.size ?? 0
 
-      await ensureAudioDir()
-      const destPath = getAudioFilePath(fileId, fileName)
-      await FileSystem.copyAsync({ from: asset.uri, to: destPath })
+      // 파일을 오디오 디렉토리로 복사
+      const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const destFileName = `${fileId}_${safeName}`
+      copyToAudioDir(asset.uri, destFileName)
 
       const fileInfo: FileInfo = {
         id: fileId,
@@ -262,7 +263,7 @@ export default function ServerScreen() {
             await audioService.stop()
             broadcastPlaybackState()
           }
-          await deleteAudioFile(getAudioFilePath(file.id, file.name))
+          deleteAudioFile(getAudioFilePath(file.id, file.name))
           removeFile(file.id)
           broadcastFileList()
         },
