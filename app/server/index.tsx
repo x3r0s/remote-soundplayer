@@ -4,15 +4,24 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
+  Pressable,
   Alert,
   ActivityIndicator,
+  StyleSheet,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import * as Network from 'expo-network'
 import * as Device from 'expo-device'
 import * as KeepAwake from 'expo-keep-awake'
+import * as DocumentPicker from 'expo-document-picker'
+import * as FileSystem from 'expo-file-system'
 import { generateId } from '../../src/utils/uuid'
-import { deleteAudioFile, fileExists, getAudioFilePath } from '../../src/utils/fileStorage'
+import {
+  deleteAudioFile,
+  ensureAudioDir,
+  fileExists,
+  getAudioFilePath,
+} from '../../src/utils/fileStorage'
 import { audioService } from '../../src/services/AudioService'
 import { mdnsService } from '../../src/services/MdnsService'
 import { tcpServer } from '../../src/services/TcpServerService'
@@ -21,11 +30,12 @@ import { AppMessage, FileInfo } from '../../src/protocol/messages'
 
 export default function ServerScreen() {
   const [localIp, setLocalIp] = useState<string>('')
+  const [isAddingFile, setIsAddingFile] = useState(false)
+  const [isPowerSaving, setIsPowerSaving] = useState(false)
   const files = useServerStore((s) => s.files)
   const playbackState = useServerStore((s) => s.playbackState)
   const isServerRunning = useServerStore((s) => s.isServerRunning)
   const connectedControllers = useServerStore((s) => s.connectedControllers)
-  const lastPlayedFileId = useServerStore((s) => s.lastPlayedFileId)
   const {
     setServerRunning,
     setConnectedControllers,
@@ -57,8 +67,7 @@ export default function ServerScreen() {
       tcpServer.start(
         handleMessage,
         handleClientConnect,
-        handleClientDisconnect,
-        handleFileReceived
+        handleClientDisconnect
       )
       setServerRunning(true)
 
@@ -67,14 +76,13 @@ export default function ServerScreen() {
         Device.deviceName ?? Device.modelName ?? `Android-${localIp}`
       mdnsService.publishService(deviceName)
 
-      // 이전에 재생 중이던 파일이 있으면 로드만 해둠 (자동 재생 안 함)
+      // 이전에 재생 중이던 파일이 있으면 파일 존재 여부 확인
       const store = useServerStore.getState()
       if (store.lastPlayedFileId) {
         const file = store.files.find((f) => f.id === store.lastPlayedFileId)
         if (file) {
           const exists = await fileExists(file.id)
           if (!exists) {
-            // 파일이 실제로 없으면 목록에서 제거
             removeFile(file.id)
           }
         }
@@ -92,6 +100,44 @@ export default function ServerScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ---- 파일 추가 (서버에서 직접) ----
+
+  const handleAddFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: false,
+      })
+
+      if (result.canceled || !result.assets?.[0]) return
+
+      const asset = result.assets[0]
+      setIsAddingFile(true)
+
+      const fileId = generateId()
+      const fileName = asset.name
+      const fileSize = asset.size ?? 0
+
+      await ensureAudioDir()
+      const destPath = getAudioFilePath(fileId, fileName)
+      await FileSystem.copyAsync({ from: asset.uri, to: destPath })
+
+      const fileInfo: FileInfo = {
+        id: fileId,
+        name: fileName,
+        size: fileSize,
+        addedAt: Date.now(),
+      }
+      addFile(fileInfo)
+      broadcastFileList()
+    } catch (e) {
+      console.error('Add file error:', e)
+      Alert.alert('오류', `파일 추가 실패: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setIsAddingFile(false)
+    }
+  }
 
   // ---- 메시지 핸들러 ----
 
@@ -164,28 +210,7 @@ export default function ServerScreen() {
         await audioService.seekTo(msg.positionMs)
         break
 
-      case 'FILE_TRANSFER_START':
-        tcpServer.sendTo(clientId, {
-          type: 'FILE_TRANSFER_ACK',
-          id: generateId(),
-          timestamp: Date.now(),
-          fileId: msg.fileId,
-          accepted: true,
-        })
-        break
 
-      case 'DELETE_FILE': {
-        const file = store.files.find((f) => f.id === msg.fileId)
-        if (file) {
-          if (store.playbackState.currentFileId === msg.fileId) {
-            await audioService.stop()
-          }
-          await deleteAudioFile(getAudioFilePath(file.id, file.name))
-          removeFile(msg.fileId)
-          broadcastFileList()
-        }
-        break
-      }
 
       default:
         break
@@ -203,28 +228,6 @@ export default function ServerScreen() {
     setConnectedControllers(count)
     console.log('Client disconnected:', clientId, '(total:', count, ')')
   }, [])
-
-  const handleFileReceived = useCallback(
-    (fileId: string, filePath: string, fileName: string, fileSize: number) => {
-      const fileInfo: FileInfo = {
-        id: fileId,
-        name: fileName,
-        size: fileSize,
-        addedAt: Date.now(),
-      }
-      addFile(fileInfo)
-      broadcastFileList()
-
-      tcpServer.broadcast({
-        type: 'FILE_TRANSFER_DONE',
-        id: generateId(),
-        timestamp: Date.now(),
-        fileId,
-        success: true,
-      })
-    },
-    []
-  )
 
   // ---- 헬퍼 ----
 
@@ -280,6 +283,17 @@ export default function ServerScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-900" edges={['bottom']}>
+      {/* 절약 모드 오버레이 */}
+      {isPowerSaving && (
+        <Pressable
+          onPress={() => setIsPowerSaving(false)}
+          style={StyleSheet.absoluteFill}
+          className="bg-black z-50 items-center justify-center"
+        >
+          <Text className="text-gray-700 text-sm">화면을 터치하면 돌아갑니다</Text>
+        </Pressable>
+      )}
+
       {/* 상태 바 */}
       <View className="mx-4 mt-4 rounded-xl bg-gray-800 p-4">
         <View className="flex-row items-center justify-between">
@@ -287,12 +301,20 @@ export default function ServerScreen() {
             <View className={`w-3 h-3 rounded-full ${statusColor}`} />
             <Text className="text-white font-medium">{statusText}</Text>
           </View>
-          {!isServerRunning && (
-            <ActivityIndicator color="#6366f1" size="small" />
-          )}
+          <View className="flex-row items-center gap-2">
+            {!isServerRunning && (
+              <ActivityIndicator color="#6366f1" size="small" />
+            )}
+            <TouchableOpacity
+              onPress={() => setIsPowerSaving(true)}
+              className="bg-gray-700 rounded-lg px-2.5 py-1 active:bg-gray-600"
+            >
+              <Text className="text-gray-300 text-xs">🌙 절약</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* IP 주소 표시 (컨트롤러에서 수동 연결 시 참조용) */}
+        {/* IP 주소 표시 */}
         {localIp ? (
           <Text className="text-gray-500 text-xs mt-2">
             이 기기 IP: <Text className="text-gray-300">{localIp}</Text> · 포트 9876
@@ -308,18 +330,17 @@ export default function ServerScreen() {
             </Text>
             <View className="flex-row items-center mt-1 gap-2">
               <View
-                className={`px-2 py-0.5 rounded-full ${
-                  playbackState.status === 'playing'
-                    ? 'bg-green-600'
-                    : 'bg-gray-600'
-                }`}
+                className={`px-2 py-0.5 rounded-full ${playbackState.status === 'playing'
+                  ? 'bg-green-600'
+                  : 'bg-gray-600'
+                  }`}
               >
                 <Text className="text-white text-xs">
                   {playbackState.status === 'playing'
                     ? '▶ 재생 중'
                     : playbackState.status === 'paused'
-                    ? '⏸ 일시정지'
-                    : '■ 정지'}
+                      ? '⏸ 일시정지'
+                      : '■ 정지'}
                 </Text>
               </View>
               {playbackState.loop && (
@@ -335,15 +356,28 @@ export default function ServerScreen() {
 
       {/* 파일 목록 */}
       <View className="flex-1 mx-4 mt-4">
-        <Text className="text-gray-400 text-sm font-medium mb-2">
-          저장된 파일 ({files.length}개)
-        </Text>
+        <View className="flex-row items-center justify-between mb-2">
+          <Text className="text-gray-400 text-sm font-medium">
+            저장된 파일 ({files.length}개)
+          </Text>
+          <TouchableOpacity
+            onPress={handleAddFile}
+            disabled={isAddingFile}
+            className="bg-emerald-700 rounded-lg px-3 py-1.5 active:bg-emerald-600 disabled:opacity-50"
+          >
+            {isAddingFile ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text className="text-white text-sm font-medium">+ 파일 추가</Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {files.length === 0 ? (
           <View className="flex-1 items-center justify-center">
             <Text className="text-gray-600 text-4xl mb-3">📂</Text>
             <Text className="text-gray-500 text-base text-center">
-              저장된 파일이 없습니다{'\n'}컨트롤러에서 파일을 전송하세요
+              저장된 파일이 없습니다{'\n'}+ 파일 추가를 눌러 MP3를 추가하세요
             </Text>
           </View>
         ) : (
@@ -385,9 +419,8 @@ function FileListItem({ file, isPlaying, playbackStatus, onDelete }: FileListIte
 
   return (
     <View
-      className={`rounded-xl p-4 flex-row items-center ${
-        isActive ? 'bg-indigo-900 border border-indigo-600' : 'bg-gray-800'
-      }`}
+      className={`rounded-xl p-4 flex-row items-center ${isActive ? 'bg-indigo-900 border border-indigo-600' : 'bg-gray-800'
+        }`}
     >
       <Text className="text-2xl mr-3">{isActive ? '🎵' : '🎶'}</Text>
       <View className="flex-1">

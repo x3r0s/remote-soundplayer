@@ -75,21 +75,7 @@ export interface SeekMessage {
   positionMs: number
 }
 
-export interface FileTransferStartMessage {
-  type: 'FILE_TRANSFER_START'
-  id: string
-  timestamp: number
-  fileId: string
-  fileName: string
-  fileSize: number
-}
 
-export interface DeleteFileMessage {
-  type: 'DELETE_FILE'
-  id: string
-  timestamp: number
-  fileId: string
-}
 
 // ---- 서버 → 컨트롤러 ----
 
@@ -113,37 +99,12 @@ export interface PlaybackStateMessage {
   state: PlaybackState
 }
 
-export interface FileTransferAckMessage {
-  type: 'FILE_TRANSFER_ACK'
-  id: string
-  timestamp: number
-  fileId: string
-  accepted: boolean
-  reason?: string
-}
-
-export interface FileTransferDoneMessage {
-  type: 'FILE_TRANSFER_DONE'
-  id: string
-  timestamp: number
-  fileId: string
-  success: boolean
-}
-
 export interface ErrorMessage {
   type: 'ERROR'
   id: string
   timestamp: number
   code: string
   message: string
-}
-
-// ---- 파일 전송 포트(9877)에서 사용하는 헤더 ----
-// length-prefix JSON 프레임으로 먼저 전송 후 raw binary 데이터 전송
-export interface TransferHeaderMessage {
-  fileId: string
-  fileName: string
-  fileSize: number
 }
 
 // ---- Union 타입 ----
@@ -157,15 +118,11 @@ export type ControllerToServerMessage =
   | SetVolumeMessage
   | SetLoopMessage
   | SeekMessage
-  | FileTransferStartMessage
-  | DeleteFileMessage
 
 export type ServerToControllerMessage =
   | PongMessage
   | FileListMessage
   | PlaybackStateMessage
-  | FileTransferAckMessage
-  | FileTransferDoneMessage
   | ErrorMessage
 
 export type AppMessage = ControllerToServerMessage | ServerToControllerMessage

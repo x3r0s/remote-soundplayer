@@ -34,7 +34,7 @@ const defaultPlaybackState: PlaybackState = {
   positionMs: 0,
   durationMs: 0,
   volume: 0.8,
-  loop: false,
+  loop: true,
 }
 
 export const useServerStore = create<ServerState>()(
@@ -44,7 +44,7 @@ export const useServerStore = create<ServerState>()(
       files: [],
       lastPlayedFileId: null,
       volume: 0.8,
-      loop: false,
+      loop: true,
       playbackState: defaultPlaybackState,
       isServerRunning: false,
       connectedControllers: 0,

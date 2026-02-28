@@ -22,10 +22,6 @@ interface ControllerState {
   serverFiles: FileInfo[]
   serverPlaybackState: PlaybackState | null
 
-  // ---- 파일 전송 ----
-  transferProgress: number | null  // 0 ~ 1, null = 전송 없음
-  transferFileName: string | null
-
   // ---- 액션 ----
   addDiscoveredDevice: (device: DiscoveredDevice) => void
   removeDiscoveredDevice: (name: string) => void
@@ -35,7 +31,6 @@ interface ControllerState {
   setConnectionStatus: (status: ControllerState['connectionStatus'], error?: string) => void
   setServerFiles: (files: FileInfo[]) => void
   setServerPlaybackState: (state: PlaybackState) => void
-  setTransferProgress: (progress: number | null, fileName?: string) => void
   reset: () => void
 }
 
@@ -47,8 +42,6 @@ export const useControllerStore = create<ControllerState>()((set) => ({
   connectionError: null,
   serverFiles: [],
   serverPlaybackState: null,
-  transferProgress: null,
-  transferFileName: null,
 
   addDiscoveredDevice: (device) =>
     set((s) => ({
@@ -79,12 +72,6 @@ export const useControllerStore = create<ControllerState>()((set) => ({
 
   setServerPlaybackState: (state) => set({ serverPlaybackState: state }),
 
-  setTransferProgress: (progress, fileName) =>
-    set({
-      transferProgress: progress,
-      transferFileName: fileName ?? null,
-    }),
-
   reset: () =>
     set({
       selectedDevice: null,
@@ -92,7 +79,5 @@ export const useControllerStore = create<ControllerState>()((set) => ({
       connectionError: null,
       serverFiles: [],
       serverPlaybackState: null,
-      transferProgress: null,
-      transferFileName: null,
     }),
 }))
