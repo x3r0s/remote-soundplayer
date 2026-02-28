@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer'
 import TcpSocket from 'react-native-tcp-socket'
 import * as FileSystem from 'expo-file-system'
 import { AppMessage } from '../protocol/messages'

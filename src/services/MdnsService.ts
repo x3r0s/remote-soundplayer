@@ -1,4 +1,5 @@
 import Zeroconf from 'react-native-zeroconf'
+import { NativeModules } from 'react-native'
 import { DiscoveredDevice } from '../stores/controllerStore'
 
 // =============================================
@@ -17,6 +18,11 @@ class MdnsService {
   private isPublishing = false
   private isScanning = false
 
+  /** 네이티브 모듈 가용 여부 확인 */
+  private isNativeAvailable(): boolean {
+    return !!NativeModules.RNZeroconf
+  }
+
   private getZeroconf(): Zeroconf {
     if (!this.zeroconf) {
       this.zeroconf = new Zeroconf()
@@ -32,6 +38,10 @@ class MdnsService {
    */
   publishService(deviceName: string): void {
     if (this.isPublishing) return
+    if (!this.isNativeAvailable()) {
+      console.warn('mDNS: RNZeroconf native module not available (rebuild required)')
+      return
+    }
     try {
       const zc = this.getZeroconf()
       zc.publishService(
@@ -75,6 +85,11 @@ class MdnsService {
     onFound: (device: DiscoveredDevice) => void,
     onRemoved: (name: string) => void
   ): boolean {
+    if (!this.isNativeAvailable()) {
+      console.warn('mDNS: RNZeroconf native module not available (rebuild required)')
+      return false
+    }
+
     try {
       if (this.isScanning) {
         this.stopScan()
