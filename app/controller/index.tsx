@@ -10,6 +10,7 @@ import {
 } from 'react-native'
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
 import * as Network from 'expo-network'
 import { mdnsService } from '../../src/services/MdnsService'
 import { tcpClient } from '../../src/services/TcpClientService'
@@ -45,7 +46,6 @@ export default function ControllerDiscoveryScreen() {
   // ---- mDNS 스캔 시작 ----
 
   useEffect(() => {
-    // 로컬 IP를 가져와서 자기 자신 필터링에 사용
     Network.getIpAddressAsync()
       .then((ip) => {
         localIpRef.current = ip
@@ -74,13 +74,11 @@ export default function ControllerDiscoveryScreen() {
       )
 
       if (!success) {
-        // mDNS를 사용할 수 없음 — 수동 IP 입력으로 폴백
         setIsScanning(false)
         setMdnsUnavailable(true)
         return
       }
 
-      // 30초 후 스캔 자동 중지
       setTimeout(() => setIsScanning(false), 30000)
     } catch (e) {
       console.error('startScanning failed:', e)
@@ -129,7 +127,6 @@ export default function ControllerDiscoveryScreen() {
           setIsConnecting(false)
           mdnsService.stopScan()
 
-          // 파일 목록 요청
           tcpClient.send({
             type: 'GET_FILE_LIST',
             id: generateId(),
@@ -170,31 +167,35 @@ export default function ControllerDiscoveryScreen() {
   // ---- 렌더링 ----
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-900" edges={['bottom']}>
+    <SafeAreaView className="flex-1 bg-black" edges={['bottom']}>
       <View className="flex-1 px-4 pt-4">
         {/* 스캔 상태 */}
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
-            {isScanning && <ActivityIndicator color="#6366f1" size="small" />}
-            <Text className="text-gray-300 text-sm">
-              {isScanning ? 'WiFi에서 기기 탐색 중...' : '탐색 완료'}
+            {isScanning && <ActivityIndicator color="#fff" size="small" />}
+            <Text className="text-neutral-400 text-sm">
+              {isScanning ? '기기 탐색 중...' : '탐색 완료'}
             </Text>
           </View>
           <TouchableOpacity
             onPress={handleRefresh}
-            className="bg-gray-700 rounded-lg px-3 py-1.5 active:bg-gray-600"
+            className="flex-row items-center gap-1.5 bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-1.5 active:opacity-70"
           >
-            <Text className="text-white text-sm">🔄 다시 탐색</Text>
+            <Ionicons name="refresh" size={14} color="#a3a3a3" />
+            <Text className="text-neutral-400 text-sm">다시 탐색</Text>
           </TouchableOpacity>
         </View>
 
         {/* mDNS 사용 불가 안내 */}
         {mdnsUnavailable && (
-          <View className="bg-yellow-900 border border-yellow-700 rounded-xl px-4 py-3 mb-3">
-            <Text className="text-yellow-200 text-sm font-medium">
-              ⚠️ 자동 탐색을 사용할 수 없습니다
-            </Text>
-            <Text className="text-yellow-400 text-xs mt-1">
+          <View className="bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-3 mb-3">
+            <View className="flex-row items-center gap-2">
+              <Ionicons name="warning-outline" size={16} color="#a3a3a3" />
+              <Text className="text-neutral-300 text-sm font-medium">
+                자동 탐색을 사용할 수 없습니다
+              </Text>
+            </View>
+            <Text className="text-neutral-500 text-xs mt-1 ml-6">
               아래 IP 주소 입력으로 직접 연결하세요
             </Text>
           </View>
@@ -202,16 +203,22 @@ export default function ControllerDiscoveryScreen() {
 
         {/* 발견된 기기 목록 */}
         {discoveredDevices.length === 0 ? (
-          <View className="items-center py-10">
+          <View className="items-center py-16">
             {isScanning ? (
-              <Text className="text-gray-500 text-base">
-                서버 모드로 실행 중인 기기를 찾고 있습니다...
-              </Text>
+              <>
+                <Ionicons name="wifi-outline" size={40} color="#404040" />
+                <Text className="text-neutral-600 text-sm mt-3 text-center">
+                  서버 모드로 실행 중인 기기를 찾고 있습니다...
+                </Text>
+              </>
             ) : (
-              <Text className="text-gray-500 text-base text-center">
-                같은 WiFi에서 기기를 찾을 수 없습니다{'\n'}아래에서 IP 주소로
-                직접 연결하세요
-              </Text>
+              <>
+                <Ionicons name="search-outline" size={40} color="#404040" />
+                <Text className="text-neutral-600 text-sm mt-3 text-center leading-5">
+                  같은 WiFi에서 기기를 찾을 수 없습니다{'\n'}아래에서 IP 주소로
+                  직접 연결하세요
+                </Text>
+              </>
             )}
           </View>
         ) : (
@@ -222,20 +229,22 @@ export default function ControllerDiscoveryScreen() {
               <TouchableOpacity
                 onPress={() => connectToDevice(item)}
                 disabled={isConnecting}
-                className="bg-gray-800 rounded-xl p-4 mb-2 active:bg-gray-700"
+                className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 mb-2 active:opacity-70"
               >
                 <View className="flex-row items-center">
-                  <Text className="text-3xl mr-3">📱</Text>
+                  <View className="w-10 h-10 rounded-lg bg-white/5 items-center justify-center mr-3">
+                    <Ionicons name="radio-outline" size={20} color="#a3a3a3" />
+                  </View>
                   <View className="flex-1">
                     <Text className="text-white font-semibold">{item.name}</Text>
-                    <Text className="text-gray-400 text-sm mt-0.5">
+                    <Text className="text-neutral-600 text-xs mt-0.5">
                       {item.address}:{item.port}
                     </Text>
                   </View>
                   {isConnecting ? (
-                    <ActivityIndicator color="#6366f1" size="small" />
+                    <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text className="text-indigo-400 text-lg">›</Text>
+                    <Ionicons name="chevron-forward" size={18} color="#525252" />
                   )}
                 </View>
               </TouchableOpacity>
@@ -245,14 +254,14 @@ export default function ControllerDiscoveryScreen() {
 
         {/* 수동 IP 입력 */}
         <View className="mt-auto pb-4">
-          <Text className="text-gray-400 text-sm font-medium mb-2">
+          <Text className="text-neutral-500 text-xs font-medium mb-2 tracking-wide uppercase">
             IP 주소로 직접 연결
           </Text>
           <View className="flex-row gap-2">
             <TextInput
-              className="flex-1 bg-gray-800 rounded-xl px-4 py-3 text-white"
+              className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white"
               placeholder="예: 192.168.0.10"
-              placeholderTextColor="#4b5563"
+              placeholderTextColor="#404040"
               value={manualIp}
               onChangeText={setManualIp}
               keyboardType="numeric"
@@ -262,12 +271,12 @@ export default function ControllerDiscoveryScreen() {
             <TouchableOpacity
               onPress={connectManual}
               disabled={isConnecting || !manualIp.trim()}
-              className="bg-indigo-600 rounded-xl px-4 py-3 items-center justify-center active:bg-indigo-700 disabled:opacity-50"
+              className="bg-white rounded-xl px-5 py-3 items-center justify-center active:opacity-80 disabled:opacity-30"
             >
-              <Text className="text-white font-semibold">연결</Text>
+              <Text className="text-black font-semibold">연결</Text>
             </TouchableOpacity>
           </View>
-          <Text className="text-gray-600 text-xs mt-2">
+          <Text className="text-neutral-700 text-xs mt-2">
             서버 기기 화면에서 IP 주소를 확인하세요
           </Text>
         </View>

@@ -1,60 +1,71 @@
 import { View, Text, TouchableOpacity } from 'react-native'
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
 
 export default function ModeSelectScreen() {
   return (
-    <SafeAreaView className="flex-1 bg-gray-900">
+    <SafeAreaView className="flex-1 bg-black">
       <View className="flex-1 items-center justify-center px-8">
-        {/* 앱 아이콘 / 타이틀 */}
-        <View className="items-center mb-16">
-          <Text className="text-6xl mb-4">🎵</Text>
-          <Text className="text-3xl font-bold text-white text-center">
+        {/* 앱 타이틀 */}
+        <View className="items-center mb-20">
+          <View className="w-16 h-16 rounded-2xl bg-white/10 items-center justify-center mb-5">
+            <Ionicons name="volume-high" size={32} color="#fff" />
+          </View>
+          <Text className="text-3xl font-bold text-white tracking-tight">
             Remote Sound Player
           </Text>
-          <Text className="text-gray-400 text-base mt-2 text-center">
+          <Text className="text-neutral-500 text-sm mt-2 text-center tracking-wide">
             같은 WiFi에서 원격으로 소리를 재생하세요
           </Text>
         </View>
 
         {/* 모드 선택 버튼 */}
-        <View className="w-full gap-4">
+        <View className="w-full gap-3">
           {/* 서버 모드 */}
           <TouchableOpacity
-            className="bg-indigo-600 rounded-2xl p-6 active:bg-indigo-700"
+            className="bg-white rounded-2xl p-5 active:opacity-80"
             onPress={() => router.push('/server')}
           >
             <View className="flex-row items-center">
-              <Text className="text-4xl mr-4">📱</Text>
+              <View className="w-11 h-11 rounded-xl bg-black items-center justify-center mr-4">
+                <Ionicons name="radio-outline" size={22} color="#fff" />
+              </View>
               <View className="flex-1">
-                <Text className="text-white text-xl font-bold">서버 모드</Text>
-                <Text className="text-indigo-200 text-sm mt-1">
-                  이 기기에서 소리를 재생합니다{'\n'}(아이 방 폰)
+                <Text className="text-black text-lg font-bold tracking-tight">
+                  서버 모드
+                </Text>
+                <Text className="text-neutral-500 text-xs mt-0.5">
+                  이 기기에서 소리를 재생합니다
                 </Text>
               </View>
-              <Text className="text-indigo-300 text-2xl">›</Text>
+              <Ionicons name="chevron-forward" size={20} color="#a3a3a3" />
             </View>
           </TouchableOpacity>
 
           {/* 컨트롤러 모드 */}
           <TouchableOpacity
-            className="bg-emerald-700 rounded-2xl p-6 active:bg-emerald-800"
+            className="bg-neutral-900 rounded-2xl p-5 border border-neutral-800 active:opacity-80"
             onPress={() => router.push('/controller')}
           >
             <View className="flex-row items-center">
-              <Text className="text-4xl mr-4">🎮</Text>
+              <View className="w-11 h-11 rounded-xl bg-white/10 items-center justify-center mr-4">
+                <Ionicons name="game-controller-outline" size={22} color="#fff" />
+              </View>
               <View className="flex-1">
-                <Text className="text-white text-xl font-bold">컨트롤러 모드</Text>
-                <Text className="text-emerald-200 text-sm mt-1">
-                  다른 기기의 소리를 제어합니다{'\n'}(부모 폰)
+                <Text className="text-white text-lg font-bold tracking-tight">
+                  컨트롤러 모드
+                </Text>
+                <Text className="text-neutral-500 text-xs mt-0.5">
+                  다른 기기의 소리를 제어합니다
                 </Text>
               </View>
-              <Text className="text-emerald-300 text-2xl">›</Text>
+              <Ionicons name="chevron-forward" size={20} color="#525252" />
             </View>
           </TouchableOpacity>
         </View>
 
-        <Text className="text-gray-600 text-xs mt-12 text-center">
+        <Text className="text-neutral-700 text-xs mt-16 text-center">
           두 기기가 같은 WiFi에 연결되어야 합니다
         </Text>
       </View>

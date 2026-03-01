@@ -10,6 +10,7 @@ import {
   StyleSheet,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
 import * as Network from 'expo-network'
 import * as Device from 'expo-device'
 import * as KeepAwake from 'expo-keep-awake'
@@ -289,7 +290,7 @@ export default function ServerScreen() {
   // ---- 렌더링 ----
 
   const statusColor =
-    connectedControllers > 0 ? 'bg-green-500' : 'bg-yellow-500'
+    connectedControllers > 0 ? 'bg-white' : 'bg-neutral-600'
   const statusText =
     connectedControllers > 0
       ? `컨트롤러 ${connectedControllers}개 연결됨`
@@ -298,7 +299,7 @@ export default function ServerScreen() {
   const currentFile = files.find((f) => f.id === playbackState.currentFileId)
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-900" edges={['bottom']}>
+    <SafeAreaView className="flex-1 bg-black" edges={['bottom']}>
       {/* 절약 모드 오버레이 */}
       {isPowerSaving && (
         <Pressable
@@ -306,63 +307,85 @@ export default function ServerScreen() {
           style={StyleSheet.absoluteFill}
           className="bg-black z-50 items-center justify-center"
         >
-          <Text className="text-gray-700 text-sm">화면을 터치하면 돌아갑니다</Text>
+          <Text className="text-neutral-800 text-sm">화면을 터치하면 돌아갑니다</Text>
         </Pressable>
       )}
 
       {/* 상태 바 */}
-      <View className="mx-4 mt-4 rounded-xl bg-gray-800 p-4">
+      <View className="mx-4 mt-4 rounded-2xl bg-neutral-900 border border-neutral-800 p-4">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <View className={`w-3 h-3 rounded-full ${statusColor}`} />
-            <Text className="text-white font-medium">{statusText}</Text>
+            <View className={`w-2.5 h-2.5 rounded-full ${statusColor}`} />
+            <Text className="text-neutral-300 font-medium text-sm">{statusText}</Text>
           </View>
           <View className="flex-row items-center gap-2">
             {!isServerRunning && (
-              <ActivityIndicator color="#6366f1" size="small" />
+              <ActivityIndicator color="#fff" size="small" />
             )}
             <TouchableOpacity
               onPress={() => setIsPowerSaving(true)}
-              className="bg-gray-700 rounded-lg px-2.5 py-1 active:bg-gray-600"
+              className="flex-row items-center gap-1 bg-neutral-800 rounded-lg px-2.5 py-1.5 active:opacity-70"
             >
-              <Text className="text-gray-300 text-xs">🌙 절약</Text>
+              <Ionicons name="moon-outline" size={13} color="#a3a3a3" />
+              <Text className="text-neutral-400 text-xs">절약</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* IP 주소 표시 */}
         {localIp ? (
-          <Text className="text-gray-500 text-xs mt-2">
-            이 기기 IP: <Text className="text-gray-300">{localIp}</Text> · 포트 9876
+          <Text className="text-neutral-600 text-xs mt-2">
+            IP: <Text className="text-neutral-400">{localIp}</Text> · 포트 9876
           </Text>
         ) : null}
 
         {/* 현재 재생 중인 곡 */}
         {currentFile && (
-          <View className="mt-3 pt-3 border-t border-gray-700">
-            <Text className="text-gray-400 text-xs">현재 재생</Text>
+          <View className="mt-3 pt-3 border-t border-neutral-800">
+            <Text className="text-neutral-600 text-xs">현재 재생</Text>
             <Text className="text-white font-medium mt-1" numberOfLines={1}>
               {currentFile.name}
             </Text>
-            <View className="flex-row items-center mt-1 gap-2">
+            <View className="flex-row items-center mt-1.5 gap-2">
               <View
-                className={`px-2 py-0.5 rounded-full ${playbackState.status === 'playing'
-                  ? 'bg-green-600'
-                  : 'bg-gray-600'
+                className={`flex-row items-center gap-1 px-2 py-0.5 rounded-full ${playbackState.status === 'playing'
+                  ? 'bg-white'
+                  : 'bg-neutral-800'
                   }`}
               >
-                <Text className="text-white text-xs">
+                <Ionicons
+                  name={
+                    playbackState.status === 'playing'
+                      ? 'play'
+                      : playbackState.status === 'paused'
+                        ? 'pause'
+                        : 'stop'
+                  }
+                  size={10}
+                  color={
+                    playbackState.status === 'playing' ? '#000' : '#a3a3a3'
+                  }
+                />
+                <Text
+                  className={`text-xs ${playbackState.status === 'playing'
+                    ? 'text-black'
+                    : 'text-neutral-400'
+                    }`}
+                >
                   {playbackState.status === 'playing'
-                    ? '▶ 재생 중'
+                    ? '재생 중'
                     : playbackState.status === 'paused'
-                      ? '⏸ 일시정지'
-                      : '■ 정지'}
+                      ? '일시정지'
+                      : '정지'}
                 </Text>
               </View>
               {playbackState.loop && (
-                <Text className="text-blue-400 text-xs">🔁 반복</Text>
+                <View className="flex-row items-center gap-0.5">
+                  <Ionicons name="repeat" size={12} color="#525252" />
+                  <Text className="text-neutral-600 text-xs">반복</Text>
+                </View>
               )}
-              <Text className="text-gray-400 text-xs">
+              <Text className="text-neutral-600 text-xs">
                 볼륨 {Math.round(playbackState.volume * 100)}%
               </Text>
             </View>
@@ -373,27 +396,30 @@ export default function ServerScreen() {
       {/* 파일 목록 */}
       <View className="flex-1 mx-4 mt-4">
         <View className="flex-row items-center justify-between mb-2">
-          <Text className="text-gray-400 text-sm font-medium">
-            저장된 파일 ({files.length}개)
+          <Text className="text-neutral-500 text-xs font-medium tracking-wide uppercase">
+            저장된 파일 ({files.length})
           </Text>
           <TouchableOpacity
             onPress={handleAddFile}
             disabled={isAddingFile}
-            className="bg-emerald-700 rounded-lg px-3 py-1.5 active:bg-emerald-600 disabled:opacity-50"
+            className="flex-row items-center gap-1 bg-white rounded-lg px-3 py-1.5 active:opacity-80 disabled:opacity-30"
           >
             {isAddingFile ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <ActivityIndicator size="small" color="#000" />
             ) : (
-              <Text className="text-white text-sm font-medium">+ 파일 추가</Text>
+              <>
+                <Ionicons name="add" size={16} color="#000" />
+                <Text className="text-black text-sm font-medium">파일 추가</Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
 
         {files.length === 0 ? (
           <View className="flex-1 items-center justify-center">
-            <Text className="text-gray-600 text-4xl mb-3">📂</Text>
-            <Text className="text-gray-500 text-base text-center">
-              저장된 파일이 없습니다{'\n'}+ 파일 추가를 눌러 MP3를 추가하세요
+            <Ionicons name="folder-open-outline" size={40} color="#262626" />
+            <Text className="text-neutral-600 text-sm mt-3 text-center leading-5">
+              저장된 파일이 없습니다{'\n'}파일 추가를 눌러 MP3를 추가하세요
             </Text>
           </View>
         ) : (
@@ -412,7 +438,7 @@ export default function ServerScreen() {
                 onDelete={() => handleDeleteFile(item)}
               />
             )}
-            ItemSeparatorComponent={() => <View className="h-2" />}
+            ItemSeparatorComponent={() => <View className="h-1.5" />}
             contentContainerStyle={{ paddingBottom: 16 }}
           />
         )}
@@ -435,26 +461,35 @@ function FileListItem({ file, isPlaying, playbackStatus, onDelete }: FileListIte
 
   return (
     <View
-      className={`rounded-xl p-4 flex-row items-center ${isActive ? 'bg-indigo-900 border border-indigo-600' : 'bg-gray-800'
+      className={`rounded-xl p-4 flex-row items-center ${isActive
+        ? 'bg-white/5 border border-neutral-700'
+        : 'bg-neutral-900'
         }`}
     >
-      <Text className="text-2xl mr-3">{isActive ? '🎵' : '🎶'}</Text>
+      <View className={`w-9 h-9 rounded-lg items-center justify-center mr-3 ${isActive ? 'bg-white' : 'bg-neutral-800'
+        }`}>
+        <Ionicons
+          name={isActive ? 'musical-notes' : 'musical-note'}
+          size={16}
+          color={isActive ? '#000' : '#525252'}
+        />
+      </View>
       <View className="flex-1">
         <Text
-          className={`font-medium ${isActive ? 'text-indigo-200' : 'text-white'}`}
+          className={`font-medium ${isActive ? 'text-white' : 'text-neutral-300'}`}
           numberOfLines={1}
         >
           {file.name}
         </Text>
-        <Text className="text-gray-500 text-xs mt-0.5">
+        <Text className="text-neutral-600 text-xs mt-0.5">
           {formatFileSize(file.size)}
         </Text>
       </View>
       <TouchableOpacity
         onPress={onDelete}
-        className="ml-2 p-2 rounded-lg active:bg-gray-700"
+        className="ml-2 p-2 rounded-lg active:opacity-70"
       >
-        <Text className="text-red-400 text-lg">🗑</Text>
+        <Ionicons name="trash-outline" size={18} color="#525252" />
       </TouchableOpacity>
     </View>
   )
