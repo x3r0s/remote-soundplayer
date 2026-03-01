@@ -222,6 +222,21 @@ export default function ServerScreen() {
     const count = tcpServer.connectedCount
     setConnectedControllers(count)
     console.log('Client connected:', clientId, '(total:', count, ')')
+
+    // 새 클라이언트에게 현재 파일 목록 + 재생 상태 전송
+    const store = useServerStore.getState()
+    tcpServer.sendTo(clientId, {
+      type: 'FILE_LIST',
+      id: generateId(),
+      timestamp: Date.now(),
+      files: store.files,
+    })
+    tcpServer.sendTo(clientId, {
+      type: 'PLAYBACK_STATE',
+      id: generateId(),
+      timestamp: Date.now(),
+      state: store.playbackState,
+    })
   }, [])
 
   const handleClientDisconnect = useCallback((clientId: string) => {
