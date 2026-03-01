@@ -46,7 +46,9 @@ export const useControllerStore = create<ControllerState>()((set) => ({
   addDiscoveredDevice: (device) =>
     set((s) => ({
       discoveredDevices: [
-        ...s.discoveredDevices.filter((d) => d.name !== device.name),
+        ...s.discoveredDevices.filter(
+          (d) => d.name !== device.name && d.address !== device.address
+        ),
         device,
       ],
     })),
