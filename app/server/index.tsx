@@ -212,6 +212,11 @@ export default function ServerScreen() {
         await audioService.seekTo(msg.positionMs)
         break
 
+      case 'SET_POWER_SAVING':
+        setIsPowerSaving(msg.enabled)
+        broadcastPowerSavingState(msg.enabled)
+        break
+
 
 
       default:
@@ -238,7 +243,13 @@ export default function ServerScreen() {
       timestamp: Date.now(),
       state: store.playbackState,
     })
-  }, [])
+    tcpServer.sendTo(clientId, {
+      type: 'POWER_SAVING_STATE',
+      id: generateId(),
+      timestamp: Date.now(),
+      enabled: isPowerSaving,
+    })
+  }, [isPowerSaving])
 
   const handleClientDisconnect = useCallback((clientId: string) => {
     const count = tcpServer.connectedCount
@@ -255,6 +266,15 @@ export default function ServerScreen() {
       id: generateId(),
       timestamp: Date.now(),
       state,
+    })
+  }
+
+  const broadcastPowerSavingState = (enabled: boolean) => {
+    tcpServer.broadcast({
+      type: 'POWER_SAVING_STATE',
+      id: generateId(),
+      timestamp: Date.now(),
+      enabled,
     })
   }
 
@@ -303,7 +323,10 @@ export default function ServerScreen() {
       {/* 절약 모드 오버레이 */}
       {isPowerSaving && (
         <Pressable
-          onPress={() => setIsPowerSaving(false)}
+          onPress={() => {
+            setIsPowerSaving(false)
+            broadcastPowerSavingState(false)
+          }}
           style={StyleSheet.absoluteFill}
           className="bg-black z-50 items-center justify-center"
         >

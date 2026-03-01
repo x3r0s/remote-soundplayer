@@ -29,6 +29,8 @@ export default function PlayerScreen() {
 
   // 슬라이더 조작 중 실시간 표시를 위한 로컬 상태
   const [localVolume, setLocalVolume] = useState<number | null>(null)
+  // 서버 절약 모드 상태
+  const [isPowerSaving, setIsPowerSaving] = useState(false)
 
   const isConnected = connectionStatus === 'connected'
 
@@ -47,6 +49,9 @@ export default function PlayerScreen() {
           break
         case 'PLAYBACK_STATE':
           setServerPlaybackState(msg.state)
+          break
+        case 'POWER_SAVING_STATE':
+          setIsPowerSaving(msg.enabled)
           break
         default:
           break
@@ -92,6 +97,15 @@ export default function PlayerScreen() {
     })
   }
 
+  const sendPowerSaving = (enabled: boolean) => {
+    tcpClient.send({
+      type: 'SET_POWER_SAVING',
+      id: generateId(),
+      timestamp: Date.now(),
+      enabled,
+    })
+  }
+
   // ---- 렌더링 ----
 
   const isPlaying = playbackState?.status === 'playing'
@@ -117,12 +131,32 @@ export default function PlayerScreen() {
     <SafeAreaView className="flex-1 bg-black" edges={['bottom']}>
       <View className="flex-1 px-4 pt-4">
         {/* 연결 정보 */}
-        <View className="flex-row items-center mb-5 gap-2">
-          <View className="w-2 h-2 rounded-full bg-white" />
-          <Text className="text-neutral-300 text-sm font-medium">
-            {selectedDevice?.name ?? '연결됨'}
-          </Text>
-          <Text className="text-neutral-700 text-xs">({selectedDevice?.address})</Text>
+        <View className="flex-row items-center justify-between mb-5">
+          <View className="flex-row items-center gap-2">
+            <View className="w-2 h-2 rounded-full bg-white" />
+            <Text className="text-neutral-300 text-sm font-medium">
+              {selectedDevice?.name ?? '연결됨'}
+            </Text>
+            <Text className="text-neutral-700 text-xs">({selectedDevice?.address})</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => sendPowerSaving(!isPowerSaving)}
+            className={`flex-row items-center gap-1 rounded-lg px-2.5 py-1.5 active:opacity-70 ${isPowerSaving
+                ? 'bg-white'
+                : 'bg-neutral-900 border border-neutral-800'
+              }`}
+          >
+            <Ionicons
+              name="moon-outline"
+              size={13}
+              color={isPowerSaving ? '#000' : '#a3a3a3'}
+            />
+            <Text
+              className={`text-xs ${isPowerSaving ? 'text-black' : 'text-neutral-400'}`}
+            >
+              절약
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* 현재 재생 / 컨트롤 */}
@@ -164,8 +198,8 @@ export default function PlayerScreen() {
             <TouchableOpacity
               onPress={() => sendLoop(!loop)}
               className={`w-12 h-12 rounded-full items-center justify-center border ${loop
-                  ? 'bg-white border-white'
-                  : 'bg-neutral-800 border-neutral-700'
+                ? 'bg-white border-white'
+                : 'bg-neutral-800 border-neutral-700'
                 } active:opacity-70`}
             >
               <Ionicons
@@ -224,8 +258,8 @@ export default function PlayerScreen() {
                 <TouchableOpacity
                   onPress={() => sendPlay(item.id)}
                   className={`rounded-xl p-3.5 flex-row items-center ${isCurrent
-                      ? 'bg-white/5 border border-neutral-700'
-                      : 'active:opacity-70'
+                    ? 'bg-white/5 border border-neutral-700'
+                    : 'active:opacity-70'
                     }`}
                 >
                   <View className={`w-8 h-8 rounded-lg items-center justify-center mr-3 ${isActive ? 'bg-white' : 'bg-neutral-800'

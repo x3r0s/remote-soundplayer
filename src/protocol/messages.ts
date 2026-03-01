@@ -75,6 +75,13 @@ export interface SeekMessage {
   positionMs: number
 }
 
+export interface SetPowerSavingMessage {
+  type: 'SET_POWER_SAVING'
+  id: string
+  timestamp: number
+  enabled: boolean
+}
+
 
 
 // ---- 서버 → 컨트롤러 ----
@@ -107,6 +114,13 @@ export interface ErrorMessage {
   message: string
 }
 
+export interface PowerSavingStateMessage {
+  type: 'POWER_SAVING_STATE'
+  id: string
+  timestamp: number
+  enabled: boolean
+}
+
 // ---- Union 타입 ----
 
 export type ControllerToServerMessage =
@@ -118,11 +132,13 @@ export type ControllerToServerMessage =
   | SetVolumeMessage
   | SetLoopMessage
   | SeekMessage
+  | SetPowerSavingMessage
 
 export type ServerToControllerMessage =
   | PongMessage
   | FileListMessage
   | PlaybackStateMessage
   | ErrorMessage
+  | PowerSavingStateMessage
 
 export type AppMessage = ControllerToServerMessage | ServerToControllerMessage
