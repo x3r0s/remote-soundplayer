@@ -14,20 +14,15 @@ const SERVICE_DOMAIN = 'local.'
 const CONTROL_PORT = 9876
 
 class MdnsService {
-  private zeroconf: Zeroconf | null = null
+  // publish와 scan에 별도 인스턴스 사용 (충돌 방지)
+  private publishZc: Zeroconf | null = null
+  private scanZc: Zeroconf | null = null
   private isPublishing = false
   private isScanning = false
 
   /** 네이티브 모듈 가용 여부 확인 */
   private isNativeAvailable(): boolean {
     return !!NativeModules.RNZeroconf
-  }
-
-  private getZeroconf(): Zeroconf {
-    if (!this.zeroconf) {
-      this.zeroconf = new Zeroconf()
-    }
-    return this.zeroconf
   }
 
   // ---- 서버 모드: 서비스 광고 ----
@@ -43,8 +38,10 @@ class MdnsService {
       return
     }
     try {
-      const zc = this.getZeroconf()
-      zc.publishService(
+      if (!this.publishZc) {
+        this.publishZc = new Zeroconf()
+      }
+      this.publishZc.publishService(
         SERVICE_TYPE,
         SERVICE_PROTOCOL,
         SERVICE_DOMAIN,
@@ -63,12 +60,17 @@ class MdnsService {
   unpublishService(): void {
     if (!this.isPublishing) return
     try {
-      const zc = this.getZeroconf()
-      zc.unpublishService(SERVICE_TYPE)
+      if (this.publishZc) {
+        this.publishZc.unpublishService(SERVICE_TYPE)
+        this.publishZc.removeAllListeners()
+        this.publishZc = null // 인스턴스 완전 해제
+      }
       this.isPublishing = false
       console.log('mDNS: unpublished service')
     } catch (e) {
       console.error('mDNS unpublish error:', e)
+      this.isPublishing = false
+      this.publishZc = null
     }
   }
 
@@ -79,11 +81,13 @@ class MdnsService {
    * 실패해도 예외를 던지지 않고 false 반환 → 수동 IP 입력으로 폴백
    * @param onFound 기기 발견 시 콜백
    * @param onRemoved 기기 제거 시 콜백
+   * @param localIpToFilter 자기 자신의 IP (필터링용, 선택)
    * @returns 스캔 시작 성공 여부
    */
   startScan(
     onFound: (device: DiscoveredDevice) => void,
-    onRemoved: (name: string) => void
+    onRemoved: (name: string) => void,
+    localIpToFilter?: string
   ): boolean {
     if (!this.isNativeAvailable()) {
       console.warn('mDNS: RNZeroconf native module not available (rebuild required)')
@@ -95,14 +99,16 @@ class MdnsService {
         this.stopScan()
       }
 
-      const zc = this.getZeroconf()
+      this.scanZc = new Zeroconf()
 
-      // 이전 리스너 제거
-      zc.removeAllListeners()
-
-      zc.on('resolved', (service: ZeroconfService) => {
+      this.scanZc.on('resolved', (service: ZeroconfService) => {
         try {
           const address = service.addresses?.[0] ?? service.host
+          // 자기 자신 필터링
+          if (localIpToFilter && address === localIpToFilter) {
+            console.log('mDNS: filtered own device', address)
+            return
+          }
           const device: DiscoveredDevice = {
             name: service.name,
             host: service.host,
@@ -116,7 +122,7 @@ class MdnsService {
         }
       })
 
-      zc.on('remove', (name: string) => {
+      this.scanZc.on('remove', (name: string) => {
         try {
           console.log('mDNS: removed device', name)
           onRemoved(name)
@@ -125,19 +131,19 @@ class MdnsService {
         }
       })
 
-      zc.on('error', (err: unknown) => {
+      this.scanZc.on('error', (err: unknown) => {
         console.error('mDNS scan error:', err)
       })
 
       // DNSSD 모드로 스캔 (NSD보다 Android 호환성 좋음)
-      zc.scan(SERVICE_TYPE, SERVICE_PROTOCOL, SERVICE_DOMAIN)
+      this.scanZc.scan(SERVICE_TYPE, SERVICE_PROTOCOL, SERVICE_DOMAIN)
       this.isScanning = true
       console.log('mDNS: scan started')
       return true
     } catch (e) {
       console.error('mDNS: startScan failed (native module error?):', e)
       this.isScanning = false
-      this.zeroconf = null // 인스턴스 초기화해서 다음 시도 가능하게
+      this.scanZc = null
       return false
     }
   }
@@ -146,14 +152,17 @@ class MdnsService {
   stopScan(): void {
     if (!this.isScanning) return
     try {
-      const zc = this.getZeroconf()
-      zc.stop()
-      zc.removeAllListeners()
+      if (this.scanZc) {
+        this.scanZc.stop()
+        this.scanZc.removeAllListeners()
+        this.scanZc = null // 인스턴스 완전 해제
+      }
       this.isScanning = false
       console.log('mDNS: scan stopped')
     } catch (e) {
       console.error('mDNS stop error:', e)
       this.isScanning = false
+      this.scanZc = null
     }
   }
 
@@ -165,7 +174,6 @@ class MdnsService {
     } catch (e) {
       console.error('mDNS destroy error:', e)
     }
-    this.zeroconf = null
   }
 }
 

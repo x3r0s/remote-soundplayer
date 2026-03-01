@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native'
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import * as Network from 'expo-network'
 import { mdnsService } from '../../src/services/MdnsService'
 import { tcpClient } from '../../src/services/TcpClientService'
 import {
@@ -39,10 +40,19 @@ export default function ControllerDiscoveryScreen() {
     reset: resetStore,
   } = useControllerStore()
 
+  const localIpRef = useRef<string | undefined>(undefined)
+
   // ---- mDNS 스캔 시작 ----
 
   useEffect(() => {
-    startScanning()
+    // 로컬 IP를 가져와서 자기 자신 필터링에 사용
+    Network.getIpAddressAsync()
+      .then((ip) => {
+        localIpRef.current = ip
+        startScanning(ip)
+      })
+      .catch(() => startScanning())
+
     return () => {
       mdnsService.stopScan()
       setIsScanning(false)
@@ -51,7 +61,7 @@ export default function ControllerDiscoveryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const startScanning = () => {
+  const startScanning = (localIp?: string) => {
     clearDiscoveredDevices()
     setIsScanning(true)
     setMdnsUnavailable(false)
@@ -59,7 +69,8 @@ export default function ControllerDiscoveryScreen() {
     try {
       const success = mdnsService.startScan(
         (device) => addDiscoveredDevice(device),
-        (name) => removeDiscoveredDevice(name)
+        (name) => removeDiscoveredDevice(name),
+        localIp
       )
 
       if (!success) {
@@ -84,7 +95,7 @@ export default function ControllerDiscoveryScreen() {
     } catch (e) {
       console.error('stopScan failed:', e)
     }
-    startScanning()
+    startScanning(localIpRef.current)
   }
 
   // ---- 기기 연결 ----
