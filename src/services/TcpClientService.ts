@@ -2,6 +2,7 @@ import { Buffer } from 'buffer'
 import TcpSocket from 'react-native-tcp-socket'
 import { AppMessage } from '../protocol/messages'
 import { encodeFrame, encodeRawFrame, FrameParser } from '../utils/framingUtils'
+import * as FileSystem from 'expo-file-system'
 
 // =============================================
 // TCP 클라이언트 서비스 (컨트롤러 모드)
@@ -37,7 +38,7 @@ class TcpClientService {
     this.messageHandler = onMessage
     this.statusHandler = onStatus
 
-    const socket = TcpSocket.createConnection({ host, port, timeout: 10000 }, () => {
+    const socket = TcpSocket.createConnection({ host, port }, () => {
       this.isConnected = true
       console.log(`TcpClient: connected to ${host}:${port}`)
       this.statusHandler?.('connected')
@@ -91,7 +92,7 @@ class TcpClientService {
   uploadFile(
     host: string,
     port: number,
-    fileData: Buffer,
+    fileUri: string,
     fileName: string,
     fileSize: number,
     onProgress?: (sent: number, total: number) => void,
@@ -100,7 +101,7 @@ class TcpClientService {
     console.log(`TcpClient: uploading ${fileName} (${fileSize} bytes) to ${host}:${port}`)
 
     const uploadSocket = TcpSocket.createConnection(
-      { host, port, timeout: 30000 },
+      { host, port },
       () => {
         console.log('TcpClient: upload connection established')
 
@@ -108,26 +109,41 @@ class TcpClientService {
         const header = encodeRawFrame({ fileName, fileSize })
         uploadSocket.write(header)
 
-        // 2) 바이너리 데이터를 청크로 전송
-        const CHUNK_SIZE = 32 * 1024 // 32KB
+        // 2) 바이너리 데이터를 청크로 분할하여 전송 (OOM 방지)
+        // 120KB = 3의 배수(Base64 깨짐 방지)
+        const CHUNK_SIZE = 120 * 1024
         let offset = 0
 
-        const sendNextChunk = () => {
-          while (offset < fileSize) {
-            const end = Math.min(offset + CHUNK_SIZE, fileSize)
-            const chunk = fileData.slice(offset, end)
-            const canContinue = uploadSocket.write(chunk)
-            offset = end
-            onProgress?.(offset, fileSize)
+        const sendNextChunk = async () => {
+          try {
+            while (offset < fileSize) {
+              const end = Math.min(offset + CHUNK_SIZE, fileSize)
+              const length = end - offset
 
-            if (!canContinue) {
-              // 버퍼가 가득 찬 경우 drain 이벤트를 기다림
-              uploadSocket.once('drain', sendNextChunk)
-              return
+              const base64Chunk = await FileSystem.readAsStringAsync(fileUri, {
+                encoding: 'base64',
+                position: offset,
+                length: length,
+              })
+              const chunk = Buffer.from(base64Chunk, 'base64')
+
+              const canContinue = uploadSocket.write(chunk)
+              offset = end
+              onProgress?.(offset, fileSize)
+
+              if (!canContinue) {
+                // 버퍼가 가득 찬 경우 drain 이벤트를 기다림
+                uploadSocket.once('drain', sendNextChunk)
+                return
+              }
             }
+            // 모든 데이터 전송 완료
+            console.log('TcpClient: file upload data sent')
+          } catch (e) {
+            console.error('TcpClient: error reading/sending chunk', e)
+            uploadSocket.destroy()
+            onComplete?.(false, '파일 읽기 오류가 발생했습니다.')
           }
-          // 모든 데이터 전송 완료
-          console.log('TcpClient: file upload data sent')
         }
 
         sendNextChunk()

@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState } from 'react'
+import { Stack } from 'expo-router'
 import {
   View,
   Text,
@@ -323,6 +324,8 @@ export default function ServerScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-black" edges={['bottom']}>
+      <Stack.Screen options={{ headerShown: !isPowerSaving }} />
+
       {/* 절약 모드 오버레이 */}
       {isPowerSaving && (
         <Pressable

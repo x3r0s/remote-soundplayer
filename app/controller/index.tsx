@@ -264,7 +264,7 @@ export default function ControllerDiscoveryScreen() {
               placeholderTextColor="#404040"
               value={manualIp}
               onChangeText={setManualIp}
-              keyboardType="numeric"
+              keyboardType="default"
               returnKeyType="done"
               onSubmitEditing={connectManual}
             />

@@ -161,18 +161,13 @@ export default function PlayerScreen() {
       setIsUploading(true)
       setUploadProgress(0)
 
-      // 파일을 Buffer로 읽기
-      const file = new ExpoFile(asset.uri)
-      const bytes = await file.bytes()
-      const fileData = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-
-      // TCP로 서버에 업로드
+      // TCP로 서버에 업로드 (청크 기반)
       tcpClient.uploadFile(
         selectedDevice.address,
         FILE_PORT,
-        fileData,
+        asset.uri,
         fileName,
-        fileData.length,
+        fileSize,
         (sent, total) => {
           setUploadProgress(Math.round((sent / total) * 100))
         },
