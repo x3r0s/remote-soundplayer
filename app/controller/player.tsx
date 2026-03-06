@@ -5,15 +5,20 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native'
 import Slider from '@react-native-community/slider'
 import { router } from 'expo-router'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import * as DocumentPicker from 'expo-document-picker'
+import { File as ExpoFile } from 'expo-file-system'
+import { Buffer } from 'buffer'
 import { tcpClient } from '../../src/services/TcpClientService'
 import { useControllerStore } from '../../src/stores/controllerStore'
 import { AppMessage, FileInfo } from '../../src/protocol/messages'
 import { generateId } from '../../src/utils/uuid'
+import { FILE_PORT } from '../../src/services/TcpServerService'
 
 export default function PlayerScreen() {
   const selectedDevice = useControllerStore((s) => s.selectedDevice)
@@ -31,6 +36,9 @@ export default function PlayerScreen() {
   const [localVolume, setLocalVolume] = useState<number | null>(null)
   // 서버 절약 모드 상태
   const [isPowerSaving, setIsPowerSaving] = useState(false)
+  // 업로드 상태
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   const isConnected = connectionStatus === 'connected'
 
@@ -52,6 +60,15 @@ export default function PlayerScreen() {
           break
         case 'POWER_SAVING_STATE':
           setIsPowerSaving(msg.enabled)
+          break
+        case 'UPLOAD_COMPLETE':
+          setIsUploading(false)
+          setUploadProgress(0)
+          if (msg.success) {
+            // 파일 목록은 FILE_LIST 메시지로 자동 업데이트됨
+          } else {
+            Alert.alert('업로드 실패', msg.error ?? '알 수 없는 오류')
+          }
           break
         default:
           break
@@ -106,6 +123,76 @@ export default function PlayerScreen() {
     })
   }
 
+  const sendDeleteFile = (file: FileInfo) => {
+    Alert.alert('파일 삭제', `"${file.name}"을 서버에서 삭제할까요?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          tcpClient.send({
+            type: 'DELETE_FILE',
+            id: generateId(),
+            timestamp: Date.now(),
+            fileId: file.id,
+          })
+        },
+      },
+    ])
+  }
+
+  // ---- 파일 업로드 ----
+
+  const handleUploadFile = async () => {
+    if (!selectedDevice) return
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'audio/*',
+        copyToCacheDirectory: true,
+      })
+
+      if (result.canceled || !result.assets?.[0]) return
+
+      const asset = result.assets[0]
+      const fileName = asset.name
+      const fileSize = asset.size ?? 0
+
+      setIsUploading(true)
+      setUploadProgress(0)
+
+      // 파일을 Buffer로 읽기
+      const file = new ExpoFile(asset.uri)
+      const bytes = await file.bytes()
+      const fileData = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+
+      // TCP로 서버에 업로드
+      tcpClient.uploadFile(
+        selectedDevice.address,
+        FILE_PORT,
+        fileData,
+        fileName,
+        fileData.length,
+        (sent, total) => {
+          setUploadProgress(Math.round((sent / total) * 100))
+        },
+        (success, error) => {
+          if (!success) {
+            setIsUploading(false)
+            setUploadProgress(0)
+            Alert.alert('업로드 실패', error ?? '알 수 없는 오류')
+          }
+          // success의 경우 UPLOAD_COMPLETE 메시지로 처리됨
+        }
+      )
+    } catch (e) {
+      setIsUploading(false)
+      setUploadProgress(0)
+      console.error('Upload error:', e)
+      Alert.alert('오류', `파일 업로드 실패: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
   // ---- 렌더링 ----
 
   const isPlaying = playbackState?.status === 'playing'
@@ -142,8 +229,8 @@ export default function PlayerScreen() {
           <TouchableOpacity
             onPress={() => sendPowerSaving(!isPowerSaving)}
             className={`flex-row items-center gap-1 rounded-lg px-2.5 py-1.5 active:opacity-70 ${isPowerSaving
-                ? 'bg-white'
-                : 'bg-neutral-900 border border-neutral-800'
+              ? 'bg-white'
+              : 'bg-neutral-900 border border-neutral-800'
               }`}
           >
             <Ionicons
@@ -232,11 +319,47 @@ export default function PlayerScreen() {
           </View>
         </View>
 
+        {/* 파일 업로드 진행률 */}
+        {isUploading && (
+          <View className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 mb-5">
+            <View className="flex-row justify-between items-center mb-3">
+              <View className="flex-row items-center gap-2">
+                <Ionicons name="cloud-upload" size={18} color="#fff" />
+                <Text className="text-white font-medium text-sm">파일 업로드 중...</Text>
+              </View>
+              <Text className="text-white font-mono text-sm">{uploadProgress}%</Text>
+            </View>
+            <View className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+              <View
+                className="h-full bg-white rounded-full"
+                style={{ width: `${uploadProgress}%` }}
+              />
+            </View>
+          </View>
+        )}
+
         {/* 파일 목록 헤더 */}
         <View className="flex-row items-center justify-between mb-2">
           <Text className="text-neutral-500 text-xs font-medium tracking-wide uppercase">
             파일 목록 ({serverFiles.length})
           </Text>
+          <TouchableOpacity
+            onPress={handleUploadFile}
+            disabled={isUploading}
+            className="flex-row items-center gap-1 bg-white rounded-lg px-3 py-1.5 active:opacity-80 disabled:opacity-50"
+          >
+            {isUploading ? (
+              <>
+                <ActivityIndicator size="small" color="#000" />
+                <Text className="text-black text-sm font-medium">업로드 중</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="cloud-upload-outline" size={16} color="#000" />
+                <Text className="text-black text-sm font-medium">파일 업로드</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* 파일 목록 */}
@@ -244,7 +367,7 @@ export default function PlayerScreen() {
           <View className="flex-1 items-center justify-center">
             <Ionicons name="folder-open-outline" size={40} color="#262626" />
             <Text className="text-neutral-600 text-sm mt-3 text-center leading-5">
-              파일이 없습니다{'\n'}서버 기기에서 MP3 파일을 추가하세요
+              파일이 없습니다{'\n'}파일 업로드를 눌러 MP3를 추가하세요
             </Text>
           </View>
         ) : (
@@ -255,36 +378,49 @@ export default function PlayerScreen() {
               const isCurrent = item.id === currentFileId
               const isActive = isCurrent && isPlaying
               return (
-                <TouchableOpacity
-                  onPress={() => sendPlay(item.id)}
+                <View
                   className={`rounded-xl p-3.5 flex-row items-center ${isCurrent
                     ? 'bg-white/5 border border-neutral-700'
-                    : 'active:opacity-70'
+                    : ''
                     }`}
                 >
-                  <View className={`w-8 h-8 rounded-lg items-center justify-center mr-3 ${isActive ? 'bg-white' : 'bg-neutral-800'
-                    }`}>
-                    <Ionicons
-                      name={isActive ? 'musical-notes' : 'musical-note'}
-                      size={16}
-                      color={isActive ? '#000' : '#525252'}
-                    />
-                  </View>
-                  <View className="flex-1">
-                    <Text
-                      className={`font-medium text-sm ${isCurrent ? 'text-white' : 'text-neutral-300'
-                        }`}
-                      numberOfLines={1}
-                    >
-                      {item.name}
-                    </Text>
-                    {isCurrent && (
-                      <Text className="text-neutral-500 text-xs mt-0.5">
-                        {isPlaying ? '재생 중' : isPaused ? '일시정지' : '선택됨'}
+                  {/* 재생 버튼 */}
+                  <TouchableOpacity
+                    onPress={() => sendPlay(item.id)}
+                    className="flex-row items-center flex-1 active:opacity-70"
+                  >
+                    <View className={`w-8 h-8 rounded-lg items-center justify-center mr-3 ${isActive ? 'bg-white' : 'bg-neutral-800'
+                      }`}>
+                      <Ionicons
+                        name={isActive ? 'musical-notes' : 'musical-note'}
+                        size={16}
+                        color={isActive ? '#000' : '#525252'}
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Text
+                        className={`font-medium text-sm ${isCurrent ? 'text-white' : 'text-neutral-300'
+                          }`}
+                        numberOfLines={1}
+                      >
+                        {item.name}
                       </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
+                      {isCurrent && (
+                        <Text className="text-neutral-500 text-xs mt-0.5">
+                          {isPlaying ? '재생 중' : isPaused ? '일시정지' : '선택됨'}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* 삭제 버튼 */}
+                  <TouchableOpacity
+                    onPress={() => sendDeleteFile(item)}
+                    className="ml-2 p-2 rounded-lg active:opacity-70"
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#525252" />
+                  </TouchableOpacity>
+                </View>
               )
             }}
             ItemSeparatorComponent={() => <View className="h-1" />}

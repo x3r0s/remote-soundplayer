@@ -14,24 +14,22 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Network from 'expo-network'
 import * as Device from 'expo-device'
 import * as KeepAwake from 'expo-keep-awake'
-import * as DocumentPicker from 'expo-document-picker'
+import { Buffer } from 'buffer'
 import { generateId } from '../../src/utils/uuid'
 import {
   deleteAudioFile,
-  ensureAudioDir,
   fileExists,
   getAudioFilePath,
-  copyToAudioDir,
+  writeAudioFileFromBuffer,
 } from '../../src/utils/fileStorage'
 import { audioService } from '../../src/services/AudioService'
 import { mdnsService } from '../../src/services/MdnsService'
-import { tcpServer } from '../../src/services/TcpServerService'
+import { tcpServer, FileUploadHeader } from '../../src/services/TcpServerService'
 import { useServerStore } from '../../src/stores/serverStore'
 import { AppMessage, FileInfo } from '../../src/protocol/messages'
 
 export default function ServerScreen() {
   const [localIp, setLocalIp] = useState<string>('')
-  const [isAddingFile, setIsAddingFile] = useState(false)
   const [isPowerSaving, setIsPowerSaving] = useState(false)
   const files = useServerStore((s) => s.files)
   const playbackState = useServerStore((s) => s.playbackState)
@@ -64,11 +62,12 @@ export default function ServerScreen() {
       setLocalIp(ip)
       console.log('Server IP:', ip)
 
-      // TCP 서버 시작
+      // TCP 서버 시작 (제어 + 파일 수신)
       tcpServer.start(
         handleMessage,
         handleClientConnect,
-        handleClientDisconnect
+        handleClientDisconnect,
+        handleFileReceived
       )
       setServerRunning(true)
 
@@ -102,44 +101,54 @@ export default function ServerScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ---- 파일 추가 (서버에서 직접) ----
+  // ---- 파일 수신 핸들러 (컨트롤러에서 업로드) ----
 
-  const handleAddFile = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'audio/*',
-        copyToCacheDirectory: true,
-      })
+  const handleFileReceived = useCallback(
+    (header: FileUploadHeader, data: Buffer) => {
+      try {
+        const fileId = generateId()
+        const fileName = header.fileName
 
-      if (result.canceled || !result.assets?.[0]) return
+        // 수신된 데이터를 파일로 저장
+        writeAudioFileFromBuffer(fileId, fileName, data)
 
-      const asset = result.assets[0]
-      setIsAddingFile(true)
+        const fileInfo: FileInfo = {
+          id: fileId,
+          name: fileName,
+          size: data.length,
+          addedAt: Date.now(),
+        }
 
-      const fileId = generateId()
-      const fileName = asset.name
-      const fileSize = asset.size ?? 0
+        // 스토어에 추가 & 즉시 브로드캐스트
+        useServerStore.getState().addFile(fileInfo)
+        broadcastFileList()
 
-      // 파일을 오디오 디렉토리로 복사
-      const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const destFileName = `${fileId}_${safeName}`
-      copyToAudioDir(asset.uri, destFileName)
+        // 업로드 완료 메시지 브로드캐스트
+        tcpServer.broadcast({
+          type: 'UPLOAD_COMPLETE',
+          id: generateId(),
+          timestamp: Date.now(),
+          fileId,
+          fileName,
+          success: true,
+        })
 
-      const fileInfo: FileInfo = {
-        id: fileId,
-        name: fileName,
-        size: fileSize,
-        addedAt: Date.now(),
+        console.log(`File received and saved: ${fileName} (${data.length} bytes)`)
+      } catch (e) {
+        console.error('handleFileReceived error:', e)
+        tcpServer.broadcast({
+          type: 'UPLOAD_COMPLETE',
+          id: generateId(),
+          timestamp: Date.now(),
+          fileId: '',
+          fileName: header.fileName,
+          success: false,
+          error: e instanceof Error ? e.message : String(e),
+        })
       }
-      addFile(fileInfo)
-      broadcastFileList()
-    } catch (e) {
-      console.error('Add file error:', e)
-      Alert.alert('오류', `파일 추가 실패: ${e instanceof Error ? e.message : String(e)}`)
-    } finally {
-      setIsAddingFile(false)
-    }
-  }
+    },
+    []
+  )
 
   // ---- 메시지 핸들러 ----
 
@@ -217,7 +226,20 @@ export default function ServerScreen() {
         broadcastPowerSavingState(msg.enabled)
         break
 
-
+      case 'DELETE_FILE': {
+        const fileToDelete = store.files.find((f) => f.id === msg.fileId)
+        if (fileToDelete) {
+          // 재생 중이면 정지
+          if (store.playbackState.currentFileId === msg.fileId) {
+            await audioService.stop()
+            broadcastPlaybackState()
+          }
+          deleteAudioFile(getAudioFilePath(fileToDelete.id, fileToDelete.name))
+          store.removeFile(msg.fileId)
+          broadcastFileList()
+        }
+        break
+      }
 
       default:
         break
@@ -286,25 +308,6 @@ export default function ServerScreen() {
       timestamp: Date.now(),
       files,
     })
-  }
-
-  const handleDeleteFile = (file: FileInfo) => {
-    Alert.alert('파일 삭제', `"${file.name}"을 삭제할까요?`, [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '삭제',
-        style: 'destructive',
-        onPress: async () => {
-          if (playbackState.currentFileId === file.id) {
-            await audioService.stop()
-            broadcastPlaybackState()
-          }
-          deleteAudioFile(getAudioFilePath(file.id, file.name))
-          removeFile(file.id)
-          broadcastFileList()
-        },
-      },
-    ])
   }
 
   // ---- 렌더링 ----
@@ -422,27 +425,16 @@ export default function ServerScreen() {
           <Text className="text-neutral-500 text-xs font-medium tracking-wide uppercase">
             저장된 파일 ({files.length})
           </Text>
-          <TouchableOpacity
-            onPress={handleAddFile}
-            disabled={isAddingFile}
-            className="flex-row items-center gap-1 bg-white rounded-lg px-3 py-1.5 active:opacity-80 disabled:opacity-30"
-          >
-            {isAddingFile ? (
-              <ActivityIndicator size="small" color="#000" />
-            ) : (
-              <>
-                <Ionicons name="add" size={16} color="#000" />
-                <Text className="text-black text-sm font-medium">파일 추가</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <Text className="text-neutral-700 text-xs">
+            컨트롤러에서 파일 관리
+          </Text>
         </View>
 
         {files.length === 0 ? (
           <View className="flex-1 items-center justify-center">
             <Ionicons name="folder-open-outline" size={40} color="#262626" />
             <Text className="text-neutral-600 text-sm mt-3 text-center leading-5">
-              저장된 파일이 없습니다{'\n'}파일 추가를 눌러 MP3를 추가하세요
+              저장된 파일이 없습니다{'\n'}컨트롤러에서 MP3 파일을 업로드하세요
             </Text>
           </View>
         ) : (
@@ -458,7 +450,6 @@ export default function ServerScreen() {
                     ? playbackState.status
                     : 'stopped'
                 }
-                onDelete={() => handleDeleteFile(item)}
               />
             )}
             ItemSeparatorComponent={() => <View className="h-1.5" />}
@@ -476,10 +467,9 @@ interface FileListItemProps {
   file: FileInfo
   isPlaying: boolean
   playbackStatus: string
-  onDelete: () => void
 }
 
-function FileListItem({ file, isPlaying, playbackStatus, onDelete }: FileListItemProps) {
+function FileListItem({ file, isPlaying, playbackStatus }: FileListItemProps) {
   const isActive = isPlaying && playbackStatus === 'playing'
 
   return (
@@ -508,12 +498,6 @@ function FileListItem({ file, isPlaying, playbackStatus, onDelete }: FileListIte
           {formatFileSize(file.size)}
         </Text>
       </View>
-      <TouchableOpacity
-        onPress={onDelete}
-        className="ml-2 p-2 rounded-lg active:opacity-70"
-      >
-        <Ionicons name="trash-outline" size={18} color="#525252" />
-      </TouchableOpacity>
     </View>
   )
 }

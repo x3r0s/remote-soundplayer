@@ -82,6 +82,13 @@ export interface SetPowerSavingMessage {
   enabled: boolean
 }
 
+export interface DeleteFileMessage {
+  type: 'DELETE_FILE'
+  id: string
+  timestamp: number
+  fileId: string
+}
+
 
 
 // ---- 서버 → 컨트롤러 ----
@@ -121,6 +128,16 @@ export interface PowerSavingStateMessage {
   enabled: boolean
 }
 
+export interface UploadCompleteMessage {
+  type: 'UPLOAD_COMPLETE'
+  id: string
+  timestamp: number
+  fileId: string
+  fileName: string
+  success: boolean
+  error?: string
+}
+
 // ---- Union 타입 ----
 
 export type ControllerToServerMessage =
@@ -133,6 +150,7 @@ export type ControllerToServerMessage =
   | SetLoopMessage
   | SeekMessage
   | SetPowerSavingMessage
+  | DeleteFileMessage
 
 export type ServerToControllerMessage =
   | PongMessage
@@ -140,5 +158,6 @@ export type ServerToControllerMessage =
   | PlaybackStateMessage
   | ErrorMessage
   | PowerSavingStateMessage
+  | UploadCompleteMessage
 
 export type AppMessage = ControllerToServerMessage | ServerToControllerMessage

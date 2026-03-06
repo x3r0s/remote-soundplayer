@@ -6,22 +6,35 @@ import { encodeFrame, FrameParser } from '../utils/framingUtils'
 // =============================================
 // TCP 서버 서비스 (서버 모드 - 아이 방 기기)
 // 포트 9876: 제어 명령 (JSON)
+// 포트 9877: 파일 전송 수신
 // =============================================
 
 export const CONTROL_PORT = 9876
+export const FILE_PORT = 9877
 
 type MessageHandler = (clientId: string, msg: AppMessage) => void
 type ClientEvent = (clientId: string) => void
 
+/** 파일 수신 헤더 */
+export interface FileUploadHeader {
+  fileName: string
+  fileSize: number
+}
+
+/** 파일 수신 완료 콜백 */
+type FileReceivedHandler = (header: FileUploadHeader, data: Buffer) => void
+
 class TcpServerService {
   private controlServer: TcpSocket.Server | null = null
+  private fileServer: TcpSocket.Server | null = null
   private clients: Map<string, TcpSocket.Socket> = new Map()
 
-  /** TCP 서버 시작 */
+  /** TCP 서버 시작 (제어 + 파일 수신) */
   start(
     onMessage: MessageHandler,
     onClientConnect: ClientEvent,
-    onClientDisconnect: ClientEvent
+    onClientDisconnect: ClientEvent,
+    onFileReceived?: FileReceivedHandler
   ): void {
     if (this.controlServer) {
       console.warn('TcpServerService: already running')
@@ -29,6 +42,9 @@ class TcpServerService {
     }
 
     this.startControlServer(onMessage, onClientConnect, onClientDisconnect)
+    if (onFileReceived) {
+      this.startFileServer(onFileReceived)
+    }
   }
 
   private startControlServer(
@@ -67,6 +83,69 @@ class TcpServerService {
     })
   }
 
+  /** 파일 전송 수신 서버 시작 */
+  private startFileServer(onFileReceived: FileReceivedHandler): void {
+    this.fileServer = TcpSocket.createServer((socket) => {
+      const clientId = `${socket.remoteAddress}:${socket.remotePort}`
+      console.log(`File upload connection from: ${clientId}`)
+
+      let header: FileUploadHeader | null = null
+      let fileBuffer = Buffer.alloc(0)
+      let expectedSize = 0
+      const headerParser = new FrameParser()
+
+      socket.on('data', (raw) => {
+        const chunk = Buffer.isBuffer(raw) ? raw : Buffer.from(raw as string, 'binary')
+
+        if (!header) {
+          // 아직 헤더를 파싱하지 않음 → 헤더 파싱 시도
+          headerParser.feedForHeader(chunk, (parsed, remainder) => {
+            header = parsed as FileUploadHeader
+            expectedSize = header.fileSize
+            console.log(`Receiving file: ${header.fileName} (${expectedSize} bytes)`)
+
+            if (remainder.length > 0) {
+              fileBuffer = Buffer.concat([fileBuffer, remainder])
+            }
+
+            // 헤더 파싱 직후 크기 확인 (0바이트 파일 또는 헤더와 데이터가 한꺼번에 온 경우)
+            if (fileBuffer.length >= expectedSize && header) {
+              const finalData = fileBuffer.slice(0, expectedSize)
+              onFileReceived(header, finalData)
+              try { socket.destroy() } catch { }
+            }
+          })
+        } else {
+          // 헤더 파싱 완료 → 바이너리 데이터 누적
+          fileBuffer = Buffer.concat([fileBuffer, chunk])
+
+          if (fileBuffer.length >= expectedSize) {
+            const finalData = fileBuffer.slice(0, expectedSize)
+            onFileReceived(header, finalData)
+            try { socket.destroy() } catch { }
+          }
+        }
+      })
+
+      socket.on('close', () => {
+        console.log(`File upload connection closed: ${clientId}`)
+      })
+
+      socket.on('error', (err) => {
+        console.error(`File upload socket error [${clientId}]:`, err.message)
+      })
+    })
+
+    this.fileServer.listen(
+      { port: FILE_PORT, host: '0.0.0.0', reuseAddress: true },
+      () => console.log(`File server listening on :${FILE_PORT}`)
+    )
+
+    this.fileServer.on('error', (err) => {
+      console.error('File server error:', err.message)
+    })
+  }
+
   /** 특정 클라이언트에게 메시지 전송 */
   sendTo(clientId: string, message: AppMessage): void {
     const socket = this.clients.get(clientId)
@@ -100,12 +179,16 @@ class TcpServerService {
     this.clients.forEach((socket) => {
       try {
         socket.destroy()
-      } catch {}
+      } catch { }
     })
     this.clients.clear()
 
     this.controlServer?.close()
     this.controlServer = null
+
+    this.fileServer?.close()
+    this.fileServer = null
+
     console.log('TcpServerService: stopped')
   }
 }

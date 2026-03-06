@@ -1,7 +1,7 @@
 import { Buffer } from 'buffer'
 import TcpSocket from 'react-native-tcp-socket'
 import { AppMessage } from '../protocol/messages'
-import { encodeFrame, FrameParser } from '../utils/framingUtils'
+import { encodeFrame, encodeRawFrame, FrameParser } from '../utils/framingUtils'
 
 // =============================================
 // TCP 클라이언트 서비스 (컨트롤러 모드)
@@ -84,12 +84,79 @@ class TcpClientService {
     }
   }
 
+  /**
+   * 파일 업로드: 서버의 파일 전송 포트에 별도 TCP 연결을 열어
+   * JSON 헤더 + 바이너리 데이터를 전송
+   */
+  uploadFile(
+    host: string,
+    port: number,
+    fileData: Buffer,
+    fileName: string,
+    fileSize: number,
+    onProgress?: (sent: number, total: number) => void,
+    onComplete?: (success: boolean, error?: string) => void
+  ): void {
+    console.log(`TcpClient: uploading ${fileName} (${fileSize} bytes) to ${host}:${port}`)
+
+    const uploadSocket = TcpSocket.createConnection(
+      { host, port, timeout: 30000 },
+      () => {
+        console.log('TcpClient: upload connection established')
+
+        // 1) JSON 헤더 전송
+        const header = encodeRawFrame({ fileName, fileSize })
+        uploadSocket.write(header)
+
+        // 2) 바이너리 데이터를 청크로 전송
+        const CHUNK_SIZE = 32 * 1024 // 32KB
+        let offset = 0
+
+        const sendNextChunk = () => {
+          while (offset < fileSize) {
+            const end = Math.min(offset + CHUNK_SIZE, fileSize)
+            const chunk = fileData.slice(offset, end)
+            const canContinue = uploadSocket.write(chunk)
+            offset = end
+            onProgress?.(offset, fileSize)
+
+            if (!canContinue) {
+              // 버퍼가 가득 찬 경우 drain 이벤트를 기다림
+              uploadSocket.once('drain', sendNextChunk)
+              return
+            }
+          }
+          // 모든 데이터 전송 완료
+          console.log('TcpClient: file upload data sent')
+        }
+
+        sendNextChunk()
+      }
+    )
+
+    uploadSocket.on('close', () => {
+      console.log('TcpClient: upload connection closed')
+      onComplete?.(true)
+    })
+
+    uploadSocket.on('error', (err) => {
+      console.error('TcpClient: upload error:', err.message)
+      onComplete?.(false, err.message)
+    })
+
+    uploadSocket.on('timeout', () => {
+      console.error('TcpClient: upload timeout')
+      uploadSocket.destroy()
+      onComplete?.(false, '업로드 시간 초과')
+    })
+  }
+
   /** 연결 해제 */
   disconnect(): void {
     if (this.socket) {
       try {
         this.socket.destroy()
-      } catch {}
+      } catch { }
       this.socket = null
     }
     this.isConnected = false

@@ -1,4 +1,5 @@
 import { File, Directory, Paths } from 'expo-file-system'
+import { Buffer } from 'buffer'
 
 /** 앱 오디오 파일 저장 디렉토리 */
 const AUDIO_DIR = new Directory(Paths.document, 'audio')
@@ -57,5 +58,21 @@ export function copyToAudioDir(contentUri: string, destFileName: string): string
   const src = new File(contentUri)
   const dest = new File(AUDIO_DIR, destFileName)
   src.copy(dest)
+  return dest.uri
+}
+
+/**
+ * Buffer(바이너리 데이터)를 오디오 디렉토리에 파일로 저장
+ * TCP 업로드로 수신된 데이터 저장용
+ */
+export function writeAudioFileFromBuffer(
+  fileId: string,
+  fileName: string,
+  data: Buffer
+): string {
+  ensureAudioDir()
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const dest = new File(AUDIO_DIR, `${fileId}_${safeName}`)
+  dest.write(data.toString('base64'), { encoding: 'base64' })
   return dest.uri
 }
