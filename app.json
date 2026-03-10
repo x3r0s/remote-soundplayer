@@ -64,6 +64,9 @@
       "eas": {
         "projectId": "64648952-18f1-41b4-8d3f-f25e52bf9c40"
       }
+    },
+    "ios": {
+      "bundleIdentifier": "com.remotesoundplayer.app"
     }
   }
 }
